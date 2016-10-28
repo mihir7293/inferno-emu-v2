@@ -2,6 +2,7 @@
 
 module.exports = {
   config: null,
+
   prepare: function (config) {
     this.config = config;
   },

@@ -6,12 +6,37 @@
 
 var mysql = require('mysql');
 var logger = require('./logger.js');
+var connectionPool = null;
+var isPrepared = false;
+
+function executeQuery(query, callback) {
+  var result = null;
+  if (connectionPool === null || !isPrepared) {
+    logger.error('Please prepare DB connection before executing SQL statements!');
+    callback(true, result);
+  } else {
+    connectionPool.getConnection(function (connectionError, connection) {
+      if (connectionError) {
+        callback(connectionError, result);
+      } else {
+        connection.query(query, function (queryError, rows) {
+          if (queryError) {
+            logger.error(queryError);
+            callback(queryError, result);
+          } else {
+            connection.release();
+            result = rows;
+            callback(queryError, result);
+          }
+        });
+      }
+    });
+  }
+}
 
 module.exports = {
-  connectionPool: null,
-  isPrepared: false,
   /**
-   * Prepares database connection pool to b e used later
+   * Prepares database connection pool to be used later
    * @param  {object} config
    */
   prepare: function (config) {
@@ -19,11 +44,17 @@ module.exports = {
     var connectionConfig = config.db.mysql.connection;
     connectionConfig.connectionLimit = 100;
     connectionConfig.debug = false;
-    this.connectionPool = mysql.createPool(config.db.mysql.connection);
-    this.isPrepared = true;
+    connectionPool = mysql.createPool(config.db.mysql.connection);
+    connectionPool.query('SELECT 1 + 1 AS solution', function (err, rows, fields) {
+      if (err) {
+        throw new Error('Could not connect to MySQL database!');
+      }
+      logger.info('Connected to MySQL database');
+    });
+    isPrepared = true;
   },
   validateCredentials: function (username, password, onResultCallback) {
-    this.executeQuery("SELECT * FROM account WHERE username = " + mysql.escape(username) + " AND password = " + mysql.escape(password), function (err, rows) {
+    executeQuery("SELECT * FROM account WHERE username = " + mysql.escape(username) + " AND password = " + mysql.escape(password), function (err, rows) {
       if (!err) {
         onResultCallback(rows);
       } else {
@@ -32,7 +63,7 @@ module.exports = {
     });
   },
   getCharacters: function (id, onResultCallback) {
-    this.executeQuery("SELECT * FROM `character` WHERE account_id = " + id, function (err, rows) {
+    executeQuery("SELECT * FROM `character` WHERE is_deleted = 0 AND account_id = " + id, function (err, rows) {
       if (!err) {
         onResultCallback(rows);
       } else {
@@ -40,22 +71,68 @@ module.exports = {
       }
     });
   },
-  executeQuery: function (query, onExecuteCallback) {
-    var result = null;
-    this.connectionPool.getConnection(function (connectionError, connection) {
-      if (connectionError) {
-        onExecuteCallback(connectionError, result);
+  canCreateCharacter: function (username, characterName, callback) {
+    executeQuery("SELECT COUNT(*) as count FROM `character` c LEFT JOIN account a ON c.account_id = a.id WHERE c.is_deleted = 0 AND a.username = " + mysql.escape(username), function (err, rows) {
+      if (err) {
+        callback(false);
       } else {
-        connection.query(query, function (queryError, rows) {
-          connection.release();
-          if (queryError) {
-            logger.error(queryError);
-            onExecuteCallback(queryError, result);
-          } else {
-            result = rows;
-            onExecuteCallback(queryError, result);
-          }
-        });
+        if (rows[0].count >= 5) {
+          callback(false);
+        } else {
+          executeQuery("SELECT COUNT(*) as count FROM `character` WHERE LOWER(name) = " + mysql.escape(characterName.toLowerCase()), function (ierr, irows) {
+            if (ierr) {
+              callback(false);
+            } else {
+              if (irows[0].count > 0) {
+                callback(false);
+              } else {
+                callback(true);
+              }
+            }
+          });
+        }
+      }
+    });
+  },
+  createCharacter: function (username, name, type, town, callback) {
+    executeQuery("SELECT id FROM `account` WHERE username = " + mysql.escape(username), function (err, rows) {
+      if (err) {
+        callback(false);
+      } else {
+        if (rows[0] && rows[0].id) {
+          executeQuery("INSERT INTO `character` (account_id, name, type, town) VALUES(" + rows[0].id + ", " + mysql.escape(name) + ", " + parseInt(type) + ", " + parseInt(town) + ")", function (ierr, irows) {
+            if (ierr) {
+              callback(false);
+            } else {
+              callback(true);
+            }
+          });
+        } else {
+          callback(false);
+        }
+      }
+    });
+  },
+  canDeleteCharacter: function (username, characterName, callback) {
+    executeQuery("SELECT COUNT(*) as count FROM `character` c LEFT JOIN account a ON c.account_id = a.id WHERE c.is_deleted = 0 AND name = " +
+      mysql.escape(characterName) + " AND a.username = " + mysql.escape(username), function (ierr, irows) {
+      if (ierr) {
+        callback(false);
+      } else {
+        if (irows[0].count > 0) {
+          callback(true);
+        } else {
+          callback(false);
+        }
+      }
+    });
+  },
+  deleteCharacter: function (characterName, callback) {
+    executeQuery("UPDATE `character` SET is_deleted = 1 WHERE name = " + mysql.escape(characterName) , function (ierr, irows) {
+      if (ierr) {
+        callback(false);
+      } else {
+        callback(true);
       }
     });
   }

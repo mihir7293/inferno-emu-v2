@@ -1,12 +1,17 @@
+/*
+ * character.js - Character manipulation helper module
+ */
+
+"use strict";
+
 var packet = require("./packet.js");
-var logger = require('./logger.js');
+const logger = require('./logger.js');
 
-var characterType = {WARRIOR: 0x00, MAGE: 0x00, HK: 0x00, ARCHER: 0x00, EMPTY: 0xFF};
-var characterTown = {TEMOZ: 0x00, QUANANTO: 0x01};
-
+var characterType = {WARRIOR: 0x00, MAGE: 0x02, HK: 0x01, ARCHER: 0x03, EMPTY: 0xFF};
+var characterTown = {TEMOZ: 0x00, QUANATO: 0x01};
 module.exports = {
   prepareCharacterPacket: function (rows) {
-    var charPacket = [0xB8, 0x03, 0x00, 0x00, 0x64, 0x00, 0x00, 0x00, 0x03, 0xFF, 0x05, 0x11];
+    var charPacket = [0xB8, 0x03, 0x00, 0x00, 0x00, 0x00, 0x0b, 0x00, 0x03, 0xFF, 0x05, 0x11];
     for (var i = 0; i < 5; i++) {
       charPacket = charPacket.concat(this.getCharacter(rows, i));
     }
