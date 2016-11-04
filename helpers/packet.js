@@ -14,6 +14,38 @@ const DESTROY_USER = 'destroy-user';
 const WORLD_ENTER = 'world-enter';
 const PING = 'ping';
 const CREATE_CHARACTER = 'create-character';
+const PAYMENT_INFO = 'payment-info';
+const CAN_MOVE_CHARACTER = 'can-move-character';
+const MOVED_CHARACTER = 'moved-character';
+
+function getReverseHexPacket(number, length) {
+  number = parseInt(number);
+  var reverseHexPacket = [];
+  var hexString = number.toString(16);
+  while (hexString.length < length) {
+    hexString = "0" + hexString;
+  }
+  for (var i = length - 2; i >= 0; i = i - 2) {
+    reverseHexPacket.push(parseInt(hexString.substr(i, 2), 16));
+  }
+  return reverseHexPacket;
+}
+
+function getEmptyPacket(length) {
+  var packet = [];
+  for (var i = 0; i < length; i++) {
+    packet.push(0x00);
+  }
+  return packet;
+}
+
+function getPacketFromString(str) {
+  var packet = [];
+  for (var i = 0; i < str.length; i++) {
+    packet.push(str.charAt(i).charCodeAt(0));
+  }
+  return packet;
+}
 
 module.exports = {
   /**
@@ -35,7 +67,10 @@ module.exports = {
         DESTROY_USER: DESTROY_USER,
         WORLD_ENTER: WORLD_ENTER,
         PING: PING,
-        CREATE_CHARACTER: CREATE_CHARACTER
+        CREATE_CHARACTER: CREATE_CHARACTER,
+        PAYMENT_INFO: PAYMENT_INFO,
+        CAN_MOVE_CHARACTER: CAN_MOVE_CHARACTER,
+        MOVED_CHARACTER: MOVED_CHARACTER
       }
     }
   },
@@ -118,12 +153,7 @@ module.exports = {
       for (var j = 0; j < toFill; j++) {
         packet.push(0x00);
       }
-      var portHexString = port.toString(16);
-      while (portHexString.length < 4) {
-        portHexString = "0" + portHexString;
-      }
-      packet.push(parseInt(portHexString.substr(2, 2), 16));
-      packet.push(parseInt(portHexString.substr(0, 2), 16));
+      packet = packet.concat(getReverseHexPacket(port, 4));
       packet.push(0x00);
       packet.push(0x00);
       return new Buffer(packet);
@@ -214,15 +244,20 @@ module.exports = {
      */
     getGameServerPacketType: function (packet) {
       var type = '';
+      if (packet[10] == 0x00 && packet[11] == 0xc0) {
+        return PAYMENT_INFO;
+      }
       switch (packet.length) {
         case 56:
           type = PREPARE_USER;
           break;
         case 12:
-          type = DESTROY_USER;
+          if (packet[10] == 0x08 && packet[11] == 0x11) {
+            type = DESTROY_USER;
+          }
           break;
         case 33:
-          if (packet[8] == 0x03 && packet[9] == 0xff && packet[10] == 0x02 && packet[11] == 0xa0) {
+          if (packet[10] == 0x02 && packet[11] == 0xa0) {
             type = DELETE_CHARACTER;
           } else {
             type = WORLD_ENTER;
@@ -236,6 +271,13 @@ module.exports = {
           break;
         case 35:
           type = CREATE_CHARACTER;
+          break;
+        case 17:
+          if (packet[10] == 0x00 && packet[11] == 0x12) {
+            type = CAN_MOVE_CHARACTER;
+          } else if (packet[10] == 0x02 && packet[11] == 0x12) {
+            type = MOVED_CHARACTER;
+          }
           break;
       }
       return type;
@@ -555,6 +597,280 @@ module.exports = {
       for (var i = 0; i < 9; i++) {
         packet.push(0x00);
       }
+      return new Buffer(packet, 'base64');
+    },
+    /**
+     * Returns ping packet
+     * @returns {Buffer}
+     */
+    getPingPacket: function () {
+      var packet = [0x16, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0xf0, 0x00, 0x00, 0x78, 0x01];
+      var randomNumber = Math.floor((Math.random() * 65534) + 1);
+      packet = packet.concat(getReverseHexPacket(randomNumber, 4));
+      packet = packet.concat([0x09, 0x7a, 0xa4, 0xc5, 0x00, 0x00]);
+      return new Buffer(packet, 'base64');
+    },
+    /**
+     * Returns character map packet
+     * @param characterName
+     * @param map
+     * @returns {Buffer}
+     */
+    getCharacterMapPacket: function (characterName, map) {
+      var packet = [0x27, 0x00, 0x00, 0x00, 0x81, 0xb1, 0x16, 0x00, 0x03, 0xff, 0x06, 0x11];
+      for (var i = 0; i < characterName.length; i++) {
+        packet.push(characterName.charAt(i).charCodeAt(0));
+      }
+      for (var i = 0; i < 12 - characterName.length; i++) {
+        packet.push(0x00);
+      }
+      for (var i = 0; i < 9; i++) {
+        packet.push(0x00);
+      }
+      var randomNumber = Math.floor((Math.random() * 65534) + 1);
+      packet = packet.concat(getReverseHexPacket(randomNumber, 4));
+      packet.push(0x16);
+      packet.push(0x00);
+      packet = packet.concat(getReverseHexPacket(map, 4));
+      return new Buffer(packet, 'base64');
+    },
+    /**
+     * Returns character world enter packet
+     * @param characterDetails
+     * @returns {Buffer}
+     */
+    getCharacterWorldEnterPacket: function (characterDetails) {
+      var packet = [0x2c, 0x04, 0x00, 0x00, 0x97, 0xb3, 0x16, 0x00, 0x03, 0xff, 0x07, 0x11];
+      for (var i = 0; i < characterDetails.name.length; i++) {
+        packet.push(characterDetails.name.charAt(i).charCodeAt(0));
+      }
+      for (var i = 0; i < 12 - characterDetails.name.length; i++) {
+        packet.push(0x00);
+      }
+      for (var i = 0; i < 9; i++) {
+        packet.push(0x00);
+      }
+      packet.push(parseInt(characterDetails.type));
+      packet = packet.concat(getReverseHexPacket(characterDetails.level, 4));
+      packet = packet.concat(getReverseHexPacket(characterDetails.experience, 8));
+      packet = packet.concat(getReverseHexPacket(characterDetails['map_id'], 4));
+      packet.push(0x00);
+      packet.push(0x00);
+      packet.push(parseInt(characterDetails['location_x']));
+      packet.push(parseInt(characterDetails['location_y']));
+      packet.push(0x00);
+      packet.push(0x00);
+      for (var i = 0; i < 28; i++) { //@todo Find out how skills are to be sent and remove 0s
+        packet.push(0x00);
+      }
+      packet = packet.concat(getReverseHexPacket(characterDetails.town, 4));
+      packet.push(0x00);
+      packet.push(0x00);
+      packet = packet.concat(getReverseHexPacket(characterDetails.woonz, 8));
+      packet = packet.concat(getReverseHexPacket(characterDetails['current_hp_charge'], 8));
+      packet = packet.concat(getReverseHexPacket(characterDetails['current_mp_charge'], 8));
+      packet = packet.concat(getReverseHexPacket(characterDetails['lore_points'], 8));
+      packet = packet.concat(getReverseHexPacket(characterDetails['remaining_skill_points'], 4));
+      packet = packet.concat(getReverseHexPacket(characterDetails.strength, 4));
+      packet = packet.concat(getReverseHexPacket(characterDetails.intelligence, 4));
+      packet = packet.concat(getReverseHexPacket(characterDetails.dexerity, 4));
+      packet = packet.concat(getReverseHexPacket(characterDetails.vitality, 4));
+      packet = packet.concat(getReverseHexPacket(characterDetails.mana, 4));
+      packet = packet.concat(getReverseHexPacket(characterDetails['maximum_hp_charge'], 8));
+      packet = packet.concat(getReverseHexPacket(characterDetails['maximum_mp_charge'], 8));
+      packet = packet.concat(getReverseHexPacket(characterDetails['current_hp'], 4));
+      packet = packet.concat(getReverseHexPacket(characterDetails['current_mp'], 4));
+      packet = packet.concat(getReverseHexPacket(characterDetails.attack, 4));
+      packet = packet.concat(getReverseHexPacket(characterDetails['magic_attack'], 4));
+      packet = packet.concat(getReverseHexPacket(characterDetails.defense, 4));
+      for (var i = 0; i < 12; i++) { //@todo No idea what it is (probably equipped shue)
+        packet.push(0x00);
+      }
+      packet = packet.concat(getReverseHexPacket(characterDetails['maximum_hp'], 4));
+      packet = packet.concat(getReverseHexPacket(characterDetails['maximum_mp'], 4));
+      packet = packet.concat(getEmptyPacket(1068 - packet.length)); //@todo Find more info on wear etc
+      return new Buffer(packet, 'base64');
+    },
+    /**
+     * @todo Investigate what packet this is
+     * @returns {Buffer}
+     */
+    getPacket37: function () {
+      var packet = [0x25, 0x00, 0x00, 0x00, 0x97, 0xb3, 0x16, 0x00, 0x03, 0xff, 0x10, 0x16];
+      for (var i = 0; i < 25; i++) {
+        packet.push(0x00);
+      }
+      return new Buffer(packet, 'base64');
+    },
+    /**
+     * @todo Investigate what packet this is (Most probably A3Friend list helper packet to be sent after sending friends list)
+     * @returns {Buffer}
+     */
+    getPacket36: function (characterName) {
+      var packet = [0x24, 0x00, 0x00, 0x00, 0x97, 0xb3, 0x16, 0x00, 0x03, 0xff, 0x32, 0x23];
+      packet.push(0x00);
+      packet.push(0xcc);
+      packet.push(0x01);
+      for (var i = 0; i < characterName.length; i++) {
+        packet.push(characterName.charAt(i).charCodeAt(0));
+      }
+      for (var i = 0; i < 12 - characterName.length; i++) {
+        packet.push(0x00);
+      }
+      packet.push(0x00);
+      for (var i = 0; i < 8; i++) {
+        packet.push(0xcc);
+      }
+      return new Buffer(packet, 'base64');
+    },
+    /**
+     * @todo Investigate what packet this is
+     * @returns {Buffer}
+     */
+    getPacket25: function () {
+      var packet = [0x19, 0x00, 0x00, 0x00, 0x97, 0xb3, 0x16, 0x00, 0x03, 0xff, 0x61, 0x14];
+      for (var i = 0; i < 13; i++) {
+        packet.push(0x00);
+      }
+      return new Buffer(packet, 'base64');
+    },
+    /**
+     * Until this packet is sent, chats sent to the character are not shown in chat panel
+     * @returns {Buffer}
+     */
+    getDisplayWhisperInChatboxPacket: function () {
+      var packet = [0x12, 0x00, 0x00, 0x00, 0x97, 0xb3, 0x16, 0x00, 0x03, 0xff, 0x03, 0x18];
+      packet = packet.concat([0xff, 0x00, 0x1f, 0x00, 0xe3, 0x00]);
+      return new Buffer(packet, 'base64');
+    },
+    /**
+     * Returns chat packet
+     * @param sender
+     * @param message
+     * @returns {Buffer}
+     * @param type
+     */
+    getChatPacket: function (sender, message, type) {
+      var packet = [0x66, 0x00, 0x00, 0x00, 0x97, 0xb3, 0x16, 0x00, 0x03, 0xff, 0x00, 0x18];
+      switch (type) {
+        case 'whisper':
+          packet.push(0x03);
+          packet.push(0x67);
+          packet = packet.concat(getEmptyPacket(3));
+          break;
+        case 'shout':
+          packet.push(0xf1);
+          packet.push(0x1e);
+          packet.push(0xb9);
+          packet.push(0x16);
+          packet.push(0x00);
+          break;
+      }
+      packet = packet.concat(getPacketFromString(sender));
+      packet = packet.concat(getEmptyPacket(20 - sender.length));
+      packet.push(0x00);
+      packet = packet.concat(getPacketFromString(message));
+      packet = packet.concat(getEmptyPacket(60 - message.length));
+      packet = packet.concat(getEmptyPacket(4));
+      return new Buffer(packet, 'base64');
+    },
+    /**
+     * Returns packet that will display message in the top bar where usually ping is shown
+     * @param message
+     * @returns {Buffer}
+     */
+    getTopMessageBarPacket: function (message) {
+      var packet = [0x6e, 0x00, 0x00, 0x00, 0x97, 0xb3, 0x16, 0x00, 0x03, 0xff, 0x00, 0x18];
+      packet.push(0x0c);
+      packet.push(0xff);
+      packet.push(0xff);
+      packet.push(0xff);
+      packet.push(0xff);
+      packet = packet.concat(getPacketFromString('NOTICE'));
+      packet = packet.concat(getEmptyPacket(20 - 'NOTICE'.length));
+      packet.push(0x00);
+      packet = packet.concat(getPacketFromString(message));
+      packet = packet.concat(getEmptyPacket(70 - message.length));
+      packet = packet.concat(getEmptyPacket(2));
+      return new Buffer(packet, 'base64');
+    },
+    /**
+     * Returns packet that will display server announcements
+     * @param message
+     * @returns {Buffer}
+     */
+    getAnnouncementPacket: function (message) {
+      var packet = [0x6e, 0x00, 0x00, 0x00, 0x97, 0xb3, 0x16, 0x00, 0x03, 0xff, 0x00, 0x18];
+      packet.push(0x00);
+      packet.push(0xff);
+      packet.push(0xff);
+      packet.push(0xff);
+      packet.push(0xff);
+      packet = packet.concat(getPacketFromString('NOTICE'));
+      packet = packet.concat(getEmptyPacket(20 - 'NOTICE'.length));
+      packet.push(0x00);
+      packet = packet.concat(getPacketFromString(message));
+      packet = packet.concat(getEmptyPacket(70 - message.length));
+      packet = packet.concat(getEmptyPacket(2));
+      return new Buffer(packet, 'base64');
+    },
+    getSmMsgPacket: function (sender, message) {
+      var packet = [0x80, 0x00, 0x00, 0x00, 0x97, 0xb3, 0x16, 0x00, 0x03, 0xff, 0x00, 0x50];
+      packet = packet.concat(getEmptyPacket(8));
+      packet = packet.concat(getPacketFromString(sender));
+      packet = packet.concat(getEmptyPacket(20 - sender.length));
+      packet = packet.concat(getEmptyPacket(9));
+      for (var i = 0; i < 2; i++) {
+        packet = packet.concat(getPacketFromString(message));
+        packet = packet.concat(getEmptyPacket(20 - message.length));
+        packet = packet.concat(getEmptyPacket(9));
+      }
+      packet = packet.concat(getPacketFromString(message));
+      packet = packet.concat(getEmptyPacket(20 - message.length));
+      packet.push(0x00);
+      return new Buffer(packet, 'base64');
+    },
+    /**
+     * Returns friends list packet
+     * @todo Populate with actual friends list
+     * @returns {Buffer}
+     */
+    getFriendListPacket: function () {
+      var packet = [0x5d, 0x05, 0x00, 0x00, 0x97, 0xb3, 0x16, 0x00, 0x03, 0xff, 0x31, 0x23];
+      packet = packet.concat(getPacketFromString('A3Friend'));
+      packet = packet.concat(getEmptyPacket(500));
+      packet = packet.concat(getEmptyPacket(500));
+      packet = packet.concat(getEmptyPacket(1373 - packet.length));
+      return new Buffer(packet, 'base64');
+    },
+    /**
+     * Returns character move acknowledgement packet
+     * @param data
+     * @returns {Buffer}
+     */
+    getMoveAckPacket: function (data) {
+      var packet = [0x12, 0x00, 0x00, 0x00, 0x97, 0xb3, 0x16, 0x00, 0x03, 0xff, 0x00, 0x12];
+      packet.push(0x01);
+      packet.push(data[12]);
+      packet.push(data[13]);
+      packet = packet.concat(getEmptyPacket(2));
+      packet.push(0x01);
+      return new Buffer(packet, 'base64');
+    },
+    getNpcPacket: function (npcId, npcLocation, npcDirection) {
+      var packet = [0x4c, 0x00, 0x00, 0x00, 0x97, 0xb3, 0x16, 0x00, 0x03, 0xff, 0x00, 0x13];
+      packet = packet.concat(npcId); //NPC ID
+      packet = packet.concat(getReverseHexPacket(Math.floor((Math.random() * 65534) + 1), 4)); // Maybe random number
+      packet = packet.concat([0xf8, 0x2f, 0x20, 0xa1, 0x07]); // Constant
+      packet = packet.concat(getEmptyPacket(5));
+      packet = packet.concat(npcLocation); //NPC location
+      packet = packet.concat(getEmptyPacket(2));
+      packet = packet.concat(npcDirection); // NPC direction
+      packet = packet.concat(getEmptyPacket(4));
+      for (var i = 0; i < 10; i++) {
+        packet = packet.concat([0xff, 0xcd, 0x00]);
+      }
+      packet = packet.concat(getEmptyPacket(10));
       return new Buffer(packet, 'base64');
     }
   }

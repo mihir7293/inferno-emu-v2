@@ -100,7 +100,18 @@ module.exports = {
         callback(false);
       } else {
         if (rows[0] && rows[0].id) {
-          executeQuery("INSERT INTO `character` (account_id, name, type, town) VALUES(" + rows[0].id + ", " + mysql.escape(name) + ", " + parseInt(type) + ", " + parseInt(town) + ")", function (ierr, irows) {
+          var map_id, x, y;
+          if (town == 1) {
+            map_id = 7;
+            x = 94;
+            y = 127;
+          } else {
+            map_id = 1;
+            x = 124;
+            y = 139;
+          }
+          executeQuery("INSERT INTO `character` (account_id, name, type, town, map_id, location_x, location_y) VALUES("
+            + rows[0].id + ", " + mysql.escape(name) + ", " + parseInt(type) + ", " + parseInt(town) + ", " + map_id + ", " + x + ", " + y + ")", function (ierr, irows) {
             if (ierr) {
               callback(false);
             } else {
@@ -113,7 +124,7 @@ module.exports = {
       }
     });
   },
-  canDeleteCharacter: function (username, characterName, callback) {
+  hasCharacter: function (username, characterName, callback) {
     executeQuery("SELECT COUNT(*) as count FROM `character` c LEFT JOIN account a ON c.account_id = a.id WHERE c.is_deleted = 0 AND name = " +
       mysql.escape(characterName) + " AND a.username = " + mysql.escape(username), function (ierr, irows) {
       if (ierr) {
@@ -135,5 +146,18 @@ module.exports = {
         callback(true);
       }
     });
+  },
+  getCharacterDetails: function (characterName, callback) {
+    executeQuery("SELECT * FROM `character` WHERE is_deleted = 0 AND name = " + mysql.escape(characterName), function (err, rows) {
+      if (!err) {
+        callback(rows);
+      } else {
+        callback([]);
+      }
+    });
+  },
+  savedUpdatedCharacterDetails: function (details, callback) {
+    executeQuery("UPDATE `character` SET map_id = " + details['map_id'] + ", location_x = " + details['location_x']
+      + ", location_y = " + details['location_y'] + " WHERE name = " + mysql.escape(details.name), callback);
   }
 };
