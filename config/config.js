@@ -1,4 +1,8 @@
-var _ = require('lodash');
+/**
+ * config.js - Loads configuration
+ */
+
+const _ = require('lodash');
 
 var config, mainConfig = {}, mainLocalConfig = {};
 

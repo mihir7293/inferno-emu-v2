@@ -1,7 +1,11 @@
-var fs = require('fs');
-var colors = require('colors');
-var cluster = require('cluster');
-var tracer = require('tracer');
+/**
+ * logger.js - Logging helper
+ */
+
+var fs = require('fs'),
+  colors = require('colors'),
+  cluster = require('cluster'),
+  tracer = require('tracer');
 
 var logger = tracer.colorConsole({
   format: [
