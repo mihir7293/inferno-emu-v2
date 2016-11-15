@@ -20,6 +20,9 @@ const MOVED_CHARACTER = 'moved-character';
 const CAN_INTERACT_NPC = 'can-interact-npc';
 const NPC_HEALER_WINDOW_OPEN = 'npc-healer-window-open';
 const RECHARGE_POTIONS = 'recharge-potions';
+const WARP_MAP_REQUEST = 'warp-map-request';
+const WARP_LOCATION_REQUEST = 'warped-location-request';
+const WARPED_CHARACTER = 'warped-character';
 
 function getReverseHexPacket(number, length) {
   number = parseInt(number);
@@ -100,7 +103,10 @@ module.exports = {
         MOVED_CHARACTER: MOVED_CHARACTER,
         CAN_INTERACT_NPC: CAN_INTERACT_NPC,
         NPC_HEALER_WINDOW_OPEN: NPC_HEALER_WINDOW_OPEN,
-        RECHARGE_POTIONS: RECHARGE_POTIONS
+        RECHARGE_POTIONS: RECHARGE_POTIONS,
+        WARP_MAP_REQUEST: WARP_MAP_REQUEST,
+        WARP_LOCATION_REQUEST: WARP_LOCATION_REQUEST,
+        WARPED_CHARACTER: WARPED_CHARACTER
       }
     }
   },
@@ -286,11 +292,23 @@ module.exports = {
             type = DESTROY_USER;
           }
           break;
+        case 13:
+          if (packet[10] == 0x00 && packet[11] == 0x19) {
+            type = WARPED_CHARACTER;
+          }
+          break;
         case 14:
           if (packet[10] == 0x08 && packet[11] == 0x13) {
             type = CAN_INTERACT_NPC;
           } else if (packet[10] == 0x67 && packet[11] == 0x17) {
             type = RECHARGE_POTIONS;
+          } else if (packet[10] == 0x11 && packet[11] == 0x11) {
+            type = WARP_LOCATION_REQUEST;
+          }
+          break;
+        case 18:
+          if (packet[10] == 0x12 && packet[11] == 0x11) {
+            type = WARP_MAP_REQUEST;
           }
           break;
         case 16:
@@ -1000,6 +1018,70 @@ module.exports = {
       packet.push(0x01);
       packet = packet.concat(getReverseHexPacket(currentPotion, 8));
       packet = packet.concat(getReverseHexPacket(currentPotionCharge, 8));
+      return new Buffer(packet, 'base64');
+    },
+    /**
+     * @todo Investigate what packet this is (Probably monster move packet)
+     * @returns {Buffer}
+     */
+    getPacket52: function () {
+      var packet = [0x34, 0x00, 0x00, 0x00, 0x97, 0xb3, 0x16, 0x00, 0x03, 0xff, 0x01, 0x13];
+      packet = packet.concat([0xe0, 0x31, 0xf4, 0x2f]);
+      packet = packet.concat([0x66, 0x92]);
+      packet = packet.concat(getEmptyPacket(2));
+      packet = packet.concat([0x67, 0x93]);
+      packet = packet.concat(getEmptyPacket(2));
+      packet = packet.concat([0x68, 0x94]);
+      packet = packet.concat(getEmptyPacket(2));
+      for (var i = 0; i < 52 - packet.length; i++) {
+        packet.push(0xff);
+      }
+      return new Buffer(packet, 'base64');
+    },
+    /**
+     * Returns teleport map packet
+     * @param mapId
+     * @returns {Buffer}
+     */
+    getWarpMapPacket: function (mapId) {
+      var packet = [0x0e, 0x00, 0x00, 0x00, 0x97, 0xb3, 0x16, 0x00, 0x03, 0xff, 0x10, 0x11];
+      packet = packet.concat(getReverseHexPacket(mapId, 4));
+      return new Buffer(packet, 'base64');
+    },
+    /**
+     * Returns can teleport acknowledgement packet
+     * @returns {Buffer}
+     */
+    getCanWarpAckPacket: function () {
+      var packet = [0x11, 0x00, 0x00, 0x00, 0x97, 0xb3, 0x16, 0x00, 0x03, 0xff, 0x08, 0x16];
+      packet.push(0x06);
+      for (var i = 0; i < 3; i++) {
+        packet.push(0xff);
+      }
+      packet.push(0x00);
+      return new Buffer(packet, 'base64');
+    },
+    /**
+     * Returns teleport location packet
+     * @param x
+     * @param y
+     * @returns {Buffer}
+     */
+    getWarpLocationPacket: function (x, y) {
+      var packet = [0x10, 0x00, 0x00, 0x00, 0x97, 0xb3, 0x16, 0x00, 0x03, 0xff, 0x11, 0x11];
+      packet.push(parseInt(x));
+      packet.push(parseInt(y));
+      packet = packet.concat(getEmptyPacket(2));
+      return new Buffer(packet, 'base64');
+    },
+    /**
+     * Returns warped character acknowledgement packet
+     * @param ack
+     * @returns {Buffer}
+     */
+    getWarpedAckPacket: function(ack) {
+      var packet = [0x0d, 0x00, 0x00, 0x00, 0x97, 0xb3, 0x16, 0x00, 0x03, 0xff, 0x00, 0x19];
+      packet.push(ack);
       return new Buffer(packet, 'base64');
     }
   }
